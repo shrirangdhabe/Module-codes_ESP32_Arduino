@@ -1,0 +1,436 @@
+6.Connections
+
+
+
+┌─────────────────────────────────────────────────────────────┐
+│                                                               │
+│  MASTER ESP32                                                │
+│  ┌──────────────────────────────────────────────────┐       │
+│  │ • Web Server (port 80)                           │       │
+│  │ • Wi-Fi connection                               │       │
+│  │ • UI Control Interface                           │       │
+│  │ • Receives commands from web browser             │       │
+│  └──────────────────────────────────────────────────┘       │
+│         │                                                     │
+│         │ UART2 (GPIO16 RX, GPIO17 TX)                     │
+│         │ 115200 baud                                       │
+│         ↓                                                     │
+│  ┌──────────────────────────────────────────────────┐       │
+│  │ SLAVE ESP32                                      │       │
+│  │ ┌────────────────────────────────────────────┐  │       │
+│  │ │ • Parses commands from master              │  │       │
+│  │ │ • Reads sensors (IMU, encoder, GPS)        │  │       │
+│  │ │ • Computes robot odometry/pose             │  │       │
+│  │ │ • Sends status packets to master           │  │       │
+│  │ └────────────────────────────────────────────┘  │       │
+│  │         │                                         │       │
+│  │         │ UART1 (GPIO18 TX, GPIO19 RX)          │       │
+│  │         │ 115200 baud                           │       │
+│  │         ↓                                         │       │
+│  │  ┌──────────────────────────────────────┐       │       │
+│  │  │ ARDUINO MEGA                         │       │       │
+│  │  │ • Motor control (drive)              │       │       │
+│  │  │ • Servo control (arm joints)         │       │       │
+│  │  │ • Gripper control                    │       │       │
+│  │  │ • Receives commands: "B90 S45..."    │       │       │
+│  │  │ • Receives commands: "PICK..."       │       │       │
+│  │  └──────────────────────────────────────┘       │       │
+│  │         │                                         │       │
+│  │         ├─→ PWM to motor drivers                 │       │
+│  │         ├─→ PWM to servo motors                  │       │
+│  │         └─→ Digital/analog to actuators          │       │
+│  │                                                   │       │
+│  └──────────────────────────────────────────────────┘       │
+│                                                               │
+└─────────────────────────────────────────────────────────────┘
+
+
+🔌 Connection Details:
+Master ESP32 ↔ Slave ESP32 (UART2)
+text
+Master GPIO17 (TX) → Slave GPIO16 (RX)
+Master GPIO16 (RX) ← Slave GPIO17 (TX)
+GND → GND (common ground)
+
+
+Slave ESP32 ↔ Arduino Mega (UART1)
+text
+Slave GPIO18 (TX) → Arduino Mega RX0 (or RX1, RX2, RX3)
+Slave GPIO19 (RX) ← Arduino Mega TX0 (or TX1, TX2, TX3)
+GND → GND (common ground)
+
+📊 Data Flow:
+User opens web UI on master ESP32 (browser → master)
+
+User clicks "Send Joint Angles" with values B90 S45 E135 W90
+
+Master sends text command to slave via UART2: "B90 S45 E135 W90\n"
+
+Slave receives command, parses it
+
+Slave forwards to Arduino Mega via UART1: "B90 S45 E135 W90\n"
+
+Arduino Mega reads command, controls servos to those angles
+
+Slave reads sensors (IMU, encoder, ultrasonic)
+
+Slave sends status packet back to master every 200ms
+
+Master updates web UI with robot position and obstacles
+
+⚙️ Why This Architecture?
+Master ESP32: High-level control, web UI, Wi-Fi communication (less real-time critical)
+
+Slave ESP32: Mid-level, sensor fusion, command routing, timing-sensitive (better for real-time)
+
+Arduino Mega: Low-level hardware control, motor/servo PWM (best for real-time precision)
+
+------------------------------------------------------
+---------------------- Complete System Architecture Overview----------------------------------------
+ ---------------------------------------------------
+ 
+ ┌─────────────────────────────────────────────────────────────────────────────┐
+│                         GARDEN ROBOT SYSTEM                                  │
+│                                                                               │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ CONTROL & MONITORING LAYER (Laptop/Browser)                          │ │
+│  │                                                                        │ │
+│  │  Laptop/Tablet Browser                                              │ │
+│  │  http://192.168.x.x:80                                              │ │
+│  │  ┌──────────────────────────────────────────────────────────────┐  │ │
+│  │  │ • Live stereo camera feeds (3 cameras)                       │  │ │
+│  │  │ • Real-time arm visualization (SVG animation)                │  │ │
+│  │  │ • Robot position/heading map                                │  │ │
+│  │  │ • Obstacle detection circles                                │  │ │
+│  │  │ • Joint angle sliders (B, S, E, W)                         │  │ │
+│  │  │ • Vegetable pick commands                                  │  │ │
+│  │  └──────────────────────────────────────────────────────────────┘  │ │
+│  │            ↑                                                     ↓   │ │
+│  │        (HTTP GET/POST)                             (JSON Status)   │ │
+│  │                                                                    │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                                          │                                   │
+│                                          │ Wi-Fi (2.4GHz / 5GHz)            │
+│                                          ↓                                   │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ COMMUNICATION & WEB INTERFACE LAYER                                   │ │
+│  │                                                                        │ │
+│  │  MASTER ESP32 (NodeMCU / ESP32-DevKit)                               │ │
+│  │  ┌──────────────────────────────────────────────────────────────┐  │ │
+│  │  │ • Wi-Fi connectivity (multi-network support)                │  │ │
+│  │  │ • Web server (HTTP port 80)                                │  │ │
+│  │  │ • Hosts interactive web UI                                │  │ │
+│  │  │ • Routes commands to slave ESP32 via UART2               │  │ │
+│  │  │ • Receives sensor status from slave                      │  │ │
+│  │  │ • Updates browser with real-time telemetry              │  │ │
+│  │  │ • Displays live camera streams                          │  │ │
+│  │  └──────────────────────────────────────────────────────────────┘  │ │
+│  │            ↓                                           ↑              │ │
+│  │         UART2                              (UART2)                   │ │
+│  │      (GPIO16 RX,                           (GPIO17 TX)              │ │
+│  │       GPIO17 TX)                                                    │ │
+│  │         115200 baud                                                │ │
+│  │            ↓                                           ↑              │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                                          │                                   │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ SENSOR FUSION & COMMAND ROUTING LAYER                                 │ │
+│  │                                                                        │ │
+│  │  SLAVE ESP32 (NodeMCU / ESP32-DevKit)                                │ │
+│  │  ┌──────────────────────────────────────────────────────────────┐  │ │
+│  │  │ • Receives text commands from master                       │  │ │
+│  │  │ • Routes commands to Arduino Mega via UART1               │  │ │
+│  │  │ • Reads all sensors:                                      │  │ │
+│  │  │   - IMU (BNO055) - heading/orientation                   │  │ │
+│  │  │   - Wheel encoder - distance traveled                    │  │ │
+│  │  │   - Ultrasonic sensor - obstacle distance               │  │ │
+│  │  │   - GPS module - global position (optional)             │  │ │
+│  │  │ • Computes odometry (dead reckoning)                     │  │ │
+│  │  │ • Calculates robot pose: posX, posY, heading             │  │ │
+│  │  │ • Sends binary status packets to master (200ms)          │  │ │
+│  │  └──────────────────────────────────────────────────────────────┘  │ │
+│  │            ↓                                           ↑              │ │
+│  │         UART1                              (UART1)                   │ │
+│  │      (GPIO18 TX,                           (GPIO19 RX)              │ │
+│  │       GPIO19 RX)                                                    │ │
+│  │         115200 baud                                                │ │
+│  │            ↓                                           ↑              │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                                          │                                   │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ HARDWARE ACTUATION & MOTOR CONTROL LAYER                              │ │
+│  │                                                                        │ │
+│  │  ARDUINO MEGA (Real-time Hardware Control)                           │ │
+│  │  ┌──────────────────────────────────────────────────────────────┐  │ │
+│  │  │ • Receives commands from slave ESP32                        │  │ │
+│  │  │ • Generates PWM signals for:                               │  │ │
+│  │  │   - Servo motors (arm joints): Base, Shoulder, Elbow, Wrist│  │ │
+│  │  │   - Drive motors (wheels/tracks)                          │  │ │
+│  │  │   - Gripper actuator                                      │  │ │
+│  │  │ • Direct hardware control (no networking)                 │  │ │
+│  │  │ • Real-time performance (no delays)                       │  │ │
+│  │  │ • Safety interlock logic                                  │  │ │
+│  │  └──────────────────────────────────────────────────────────────┘  │ │
+│  │            ↓                                                         │ │
+│  │         PWM/Digital/Analog Signals                                  │ │
+│  │            ↓                                                         │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                                          │                                   │
+│  ┌────────────────────────────────────────────────────────────────────────┐ │
+│  │ PHYSICAL ROBOT COMPONENTS                                             │ │
+│  │                                                                        │ │
+│  │  • Servo Motors (4x) → Arm joints                                    │ │
+│  │  • DC Motors (2x) → Drive wheels/tracks                             │ │
+│  │  • Gripper Servo → Vegetation grasping                              │ │
+│  │  • Wheel Encoder → Odometry sensing                                 │ │
+│  │  • IMU (BNO055) → Orientation/heading                               │ │
+│  │  • Ultrasonic Sensor → Obstacle detection (rear)                    │ │
+│  │  • Cameras (3x) → Stereo vision + gripper view                      │ │
+│  │  • GPS Module → Global position (optional)                          │ │
+│  │  • Power Supply → Battery + regulators                              │ │
+│  │                                                                        │ │
+│  └────────────────────────────────────────────────────────────────────────┘ │
+│                                                                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+📱 Role of Each Component:
+1. LAPTOP / BROWSER (User Control Interface)
+What it does:
+
+Opens a web browser and connects to master ESP32 at http://192.168.x.x:80
+
+Displays live video feeds from 3 cameras (stereo pair + gripper view)
+
+Shows real-time robot status (position, heading, obstacles)
+
+Allows user to control:
+
+Arm joint angles via sliders
+
+Vegetable picking commands
+
+Robot movement
+
+Connection:
+
+Wireless (Wi-Fi) to master ESP32
+
+No direct physical connection needed
+
+2. MASTER ESP32 (Central Command & Web Server)
+What it does:
+
+Web Server: Hosts the interactive control page with HTML/CSS/JavaScript
+
+Wi-Fi Router: Connects to your home/garden Wi-Fi network
+
+Command Center: Receives clicks/inputs from browser
+
+Status Dashboard: Displays real-time telemetry from robot
+
+Bridge: Routes commands to slave ESP32 and sensor data back to browser
+
+Key Features:
+
+text
+Master ESP32 Responsibilities:
+├─ Wi-Fi connectivity (auto-reconnect)
+├─ HTTP server (port 80)
+├─ Web UI with live video streams
+├─ Arm visualization (SVG animation)
+├─ Robot pose map (canvas with heading arrow)
+├─ UART2 communication with slave
+│  ├─ Sends: "B90 S45 E135 W90" (joint commands)
+│  └─ Sends: "PICK tomato 5" (picking commands)
+└─ Receives status packets (pose, heading, obstacle distance)
+Physical Connections:
+
+Power (5V/GND)
+
+UART2 to Slave ESP32 (GPIO16 RX, GPIO17 TX)
+
+Wi-Fi antenna
+
+3. WEB CAMERAS (ESP32 CAM Modules) - 3x
+What they do:
+
+Stream live video to browser
+
+Stereo Camera #1: Left camera for depth perception
+
+Stereo Camera #2: Right camera for depth perception
+
+Gripper Camera: Mounted on arm for close-up vegetable inspection
+
+Specifications:
+
+Each camera runs its own ESP32-CAM module
+
+Each has local HTTP stream server on port 81
+
+Master ESP32 displays their streams via <img> tags
+
+URLs:
+
+http://192.168.4.2:81/stream (Stereo Cam 1)
+
+http://192.168.4.3:81/stream (Stereo Cam 2)
+
+http://192.168.4.4:81/stream (Gripper Cam)
+
+Connection:
+
+Each camera connected to its own Wi-Fi network
+
+Streams sent directly to browser (not through master ESP32)
+
+4. SLAVE ESP32 (Sensor Fusion & Command Router)
+What it does:
+
+Sensor Reader: Continuously reads all onboard sensors
+
+IMU (heading/orientation)
+
+Wheel encoder (distance traveled)
+
+Ultrasonic sensor (obstacles)
+
+GPS (optional global position)
+
+Odometry Engine: Computes robot position using dead reckoning
+
+text
+Position = Previous Position + Distance * cos(heading)
+Command Router: Receives text commands from master, forwards to Arduino Mega
+
+text
+Master: "B90 S45 E135 W90"
+   ↓
+Slave parses & forwards to Mega
+   ↓
+Mega moves servos
+Status Reporter: Sends binary packets back to master every 200ms with:
+
+Current X, Y position
+
+Current heading (yaw angle)
+
+Obstacle distance
+
+Timing:
+
+Sensor reads: Every 100ms
+
+Status sends: Every 200ms
+
+Command processing: Real-time
+
+5. ARDUINO MEGA (Real-Time Hardware Control)
+What it does:
+
+Motor Driver Interface: Generates PWM signals to control motors
+
+Servo Controller: Precise control of 4 arm joint servos
+
+Drive Control: Manages wheel/track motors
+
+Gripper Control: Opens/closes vegetable gripper
+
+Real-Time Safety: Immediate response to commands (no network delays)
+
+Hardware Connections:
+
+text
+Arduino Mega receives commands from Slave ESP32
+  ↓
+Parses: "B90 S45 E135 W90" (angle values)
+  ↓
+Generates PWM to servos:
+  ├─ Pin 5 → Base servo
+  ├─ Pin 6 → Shoulder servo
+  ├─ Pin 7 → Elbow servo
+  └─ Pin 8 → Wrist servo
+🔄 Complete Command Flow Example:
+Scenario: User picks a tomato
+text
+1. USER (Laptop Browser)
+   └─ Enters "tomato" in text field
+   └─ Clicks "Start Detect & Pick" button
+
+2. BROWSER (JavaScript)
+   └─ Sends HTTP GET: /command?cmd=PICK%20tomato%205
+   └─ Travels over Wi-Fi to Master ESP32
+
+3. MASTER ESP32
+   └─ Receives HTTP request
+   └─ Extracts: cmd = "PICK tomato 5"
+   └─ Sends via UART2 to Slave: "PICK tomato 5\n"
+   └─ Returns HTTP response: "Command sent"
+
+4. SLAVE ESP32
+   └─ Reads from UART: "PICK tomato 5"
+   └─ Parses: vegetable="tomato", count=5
+   └─ Sends to Arduino Mega via UART1: "PICK tomato 5\n"
+
+5. ARDUINO MEGA
+   └─ Receives: "PICK tomato 5"
+   └─ Triggers picking routine:
+      ├─ Move arm to scanning position
+      ├─ Activate computer vision on gripper camera
+      ├─ Detect tomatoes in field of view
+      ├─ Move gripper to first tomato
+      ├─ Close gripper
+      ├─ Retract arm
+      └─ Repeat 5 times
+
+6. WHILE PICKING - Real-time feedback
+   └─ Slave ESP32 continuously reads sensors
+   └─ Every 200ms: sends status packet to Master
+   └─ Master receives: position, heading, obstacles
+   └─ Browser updates: robot position on map
+
+7. USER (Laptop Browser)
+   └─ Sees robot move in real-time on map
+   └─ Sees arm kinematics update
+   └─ Sees camera feeds showing picking action
+📊 Data Communication Diagram
+text
+┌─ COMMAND FLOW (Text) ──────────────────────────────────────┐
+│                                                              │
+│  Browser                Master ESP32         Slave ESP32    │
+│  (HTTP GET)  ──────>   (HTTP Server)  ────>  (UART Text)   │
+│  "B90 S45..." :        receives       :      parses         │
+│                        routes to      :      forwards        │
+│                        slave          :      to Mega        │
+│                                                              │
+├─ STATUS FLOW (Binary) ─────────────────────────────────────┤
+│                                                              │
+│  Arduino Mega          Slave ESP32          Master ESP32    │
+│  (Executing)  :<────   (Binary Packet)  <──  (HTTP JSON)   │
+│               :        0xAA 18 01 ...       Browser reads    │
+│               :        sends every 200ms    position, etc   │
+│                                                              │
+└──────────────────────────────────────────────────────────────┘
+🎯 Key Points to Remember
+Component	Role	Connection	Timing
+Laptop	User interface & monitoring	Wi-Fi (wireless)	Interactive
+Master ESP32	Web server & command router	Wi-Fi + UART2	Always on
+Cameras (3x)	Live video streaming	Wi-Fi (wireless)	Continuous 15-30fps
+Slave ESP32	Sensor fusion & command router	UART2 + UART1	100-200ms updates
+Arduino Mega	Hardware control	UART1	Real-time (ms)
+Sensors	Data collection	I2C/GPIO/Serial	100ms read cycle
+Motors/Servos	Physical actuation	PWM/Digital	Real-time response
+💡 System Design Philosophy
+Layered Architecture: Each layer has one primary responsibility
+
+Wireless at Top: User interface far from robot
+
+Wired at Bottom: Arduino Mega for real-time control (no network delays)
+
+Sensor Fusion in Middle: Slave ESP32 processes sensor data before sending
+
+Web-First UI: Browser-based control (no app download needed)
+
+Redundancy: Can operate without internet (local Wi-Fi only)
+
+This architecture allows you to control your garden robot from anywhere on your Wi-Fi network with real-time feedback!
