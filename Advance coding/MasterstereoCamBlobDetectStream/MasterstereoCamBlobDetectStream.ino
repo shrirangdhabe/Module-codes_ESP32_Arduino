@@ -5,6 +5,13 @@
 #include <WiFiUdp.h>
 #include <WebServer.h>
 
+// Set your Static IP address
+IPAddress local_IP(192, 168, 1, 198);
+IPAddress gateway(192, 168, 1, 1);
+IPAddress subnet(255, 255, 255, 0);
+IPAddress primaryDNS(8, 8, 8, 8);
+IPAddress secondaryDNS(8, 8, 4, 4);
+
 // Master
 #define TRIGGER_PIN 13
 #define ACK_PIN 12
@@ -112,6 +119,10 @@ void streamHandler() {
 
 void setup() {
   Serial.begin(115200);
+
+  // Configure static IP before connecting to WiFi
+  WiFi.config(local_IP, gateway, subnet, primaryDNS, secondaryDNS);
+
   for (int i = 0; i < wifiCount; i++) {
     wifiMulti.addAP(ssids[i], passwords[i]);
   }
@@ -121,7 +132,7 @@ void setup() {
     Serial.print(".");
   }
   Serial.println("\nWiFi connected");
-  Serial.println(WiFi.localIP());
+  Serial.println("IP address: " + WiFi.localIP().toString());
 
   timeClient.begin();
 

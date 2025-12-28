@@ -3,6 +3,13 @@
 #include <WiFiMulti.h>
 #include <WebServer.h>
 
+// Set your Static IP address
+IPAddress local_IP(192, 168, 1, 189);
+IPAddress gateway(192, 168, 1, 1);
+IPAddress subnet(255, 255, 255, 0);
+IPAddress primaryDNS(8, 8, 8, 8);
+IPAddress secondaryDNS(8, 8, 4, 4);
+
 // SLAVE
 #define TRIGGER_PIN 13
 #define ACK_PIN 12
@@ -90,6 +97,10 @@ void streamHandler() {
 
 void setup() {
   Serial.begin(115200);
+
+  // Configure static IP before connecting to WiFi
+  WiFi.config(local_IP, gateway, subnet, primaryDNS, secondaryDNS);
+
   pinMode(TRIGGER_PIN, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(TRIGGER_PIN), onTrigger, FALLING);
   pinMode(ACK_PIN, OUTPUT);
@@ -104,7 +115,7 @@ void setup() {
     Serial.print(".");
   }
   Serial.println("\nWiFi connected");
-  Serial.println(WiFi.localIP());
+  Serial.println("IP address: " + WiFi.localIP().toString());
 
   initCamera();
 
